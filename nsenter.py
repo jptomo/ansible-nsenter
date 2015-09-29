@@ -49,6 +49,10 @@ class Connection(object):
         # get container env separated by null char
         env_str = self._exec_command('cat ' + env_path)[2]
 
+        # /proc/X/environ contains no newlines. So anything before a \n is
+        # noise from stdin.
+        env_str = env_str.split('\n')[-1]
+
         # split null and = char
         proc_envs = env_str.split('\0')
         proc_envs = dict([x.split('=') for x in proc_envs if x])
@@ -168,8 +172,15 @@ class Connection(object):
             'nsenter -m -u -i -n -p -t {}'
             .format(self._extract_var('Leader')))
         cmd_env, cmd_plan = Connection._split_env(cmd)
-        cmd = ' '.join([cmd_env, nsenter, cmd_plan]).strip()
 
+        # Append the PATH variable to cmd_env, if the variable exists in the
+        # Container environment
+        try:
+            cmd_env = 'PATH={} {}'.format(self.container_envs['PATH'], cmd_env)
+        except KeyError:
+            pass
+
+        cmd = ' '.join([cmd_env, nsenter, cmd_plan]).strip()
         return self._exec_command(cmd, executable)
 
     def _exec_command(self, cmd, executable='/bin/sh'):
